@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+.env
+.env.*
+!.env.example
+npm-debug.log*
+
+# Runtime uploads and server-managed listing overrides
+data/apps.json
+data/users.json
+data/sessions.json
+data/uploads/*
+!data/uploads/.gitkeep
