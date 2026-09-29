@@ -1,4 +1,4 @@
-import { ArrowUpRight, Check, Download, Globe2, Heart } from 'lucide-react'
+import { ArrowUpRight, BadgeCheck, Check, Download, Globe2, Heart, Star } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { StoreApp } from '../types'
 import { useStore } from '../store/StoreContext'
@@ -28,6 +28,8 @@ export function AppCard({ app, layout = 'card' }: AppCardProps) {
             <span>{app.category}</span>
             <span aria-hidden="true">·</span>
             <span>{app.platforms.length === 1 ? app.platforms[0] : `${app.platforms.length} platforms`}</span>
+            {Boolean(app.ratingCount) && <><span aria-hidden="true">·</span><span className="app-card__rating"><Star size={11} fill="currentColor" /> {app.ratingAverage?.toFixed(1)}</span></>}
+            {app.publisherVerified && <span className="app-card__verified" title="Verified Publisher"><BadgeCheck size={12} /></span>}
           </div>
         </div>
       </Link>

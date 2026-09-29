@@ -1,10 +1,13 @@
 import {
+  BadgeCheck,
+  BarChart3,
   Boxes,
   Compass,
   Heart,
   Library,
   LogIn,
   LogOut,
+  MailWarning,
   Moon,
   Plus,
   Search,
@@ -20,6 +23,7 @@ import { useStore } from '../store/StoreContext'
 import { OfflineBanner } from './StoreStates'
 import { SearchDialog } from './SearchDialog'
 import { AuthDialog } from './AuthDialog'
+import { NotificationCenter } from './NotificationCenter'
 
 const navItems = [
   { to: '/', label: 'Discover', icon: Compass, end: true },
@@ -37,9 +41,10 @@ export function Layout() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
   const location = useLocation()
-  const canPublish = user?.status === 'approved' && ['publisher', 'admin'].includes(user.role)
-  const isAdmin = user?.status === 'approved' && user.role === 'admin'
-  const managementRoute = location.pathname.startsWith('/manage') || location.pathname.startsWith('/admin')
+  const isActivated = user?.status === 'approved' && user.emailVerified
+  const canPublish = isActivated && ['publisher', 'admin'].includes(user.role)
+  const isAdmin = isActivated && user?.role === 'admin'
+  const managementRoute = location.pathname.startsWith('/manage') || location.pathname.startsWith('/admin') || location.pathname.startsWith('/insights')
 
   const closeSearch = useCallback(() => setSearchOpen(false), [])
 
@@ -80,7 +85,9 @@ export function Layout() {
             <>
               <p className="nav-label nav-label--second">Manage</p>
               {isAdmin && <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}><ShieldCheck size={19} />Admin dashboard</NavLink>}
-              <NavLink to="/manage" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}><Settings2 size={19} />{isAdmin ? 'Store listings' : 'Publisher studio'}</NavLink>
+              <NavLink to="/manage" className={({ isActive }) => `nav-item ${isActive && location.pathname !== '/manage/publisher' ? 'is-active' : ''}`}><Settings2 size={19} />{isAdmin ? 'Store listings' : 'Publisher studio'}</NavLink>
+              {!isAdmin && <NavLink to="/manage/publisher" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}><BadgeCheck size={19} />Publisher page</NavLink>}
+              <NavLink to="/insights" className={({ isActive }) => `nav-item ${isActive ? 'is-active' : ''}`}><BarChart3 size={19} />Insights</NavLink>
             </>
           )}
         </nav>
@@ -113,6 +120,7 @@ export function Layout() {
             {!authLoading && !user && (
               <><span className="guest-allowance">{guestActionsRemaining} guest {guestActionsRemaining === 1 ? 'action' : 'actions'} left</span><button type="button" className="topbar-signup" onClick={() => openAuth('signup')}>Create account</button><button type="button" className="button button--primary" onClick={() => openAuth('signin')}><LogIn size={16} /> Sign in</button></>
             )}
+            {user && <NotificationCenter />}
             {canPublish && <NavLink to="/manage/new" className="button button--primary topbar-add"><Plus size={17} /> Add app</NavLink>}
             {user && !canPublish && <NavLink to="/profile" className={`topbar-account status-${user.status}`}><span>{initials(user.displayName)}</span><small>{user.status === 'approved' ? 'Member' : user.status}</small></NavLink>}
             {user && canPublish && <NavLink to="/profile" className="topbar-account topbar-account--publisher"><span>{initials(user.displayName)}</span><small>{isAdmin ? 'Admin' : 'Publisher'}</small></NavLink>}
@@ -123,9 +131,10 @@ export function Layout() {
         {user && user.status !== 'approved' && (
           <div className={`account-status-banner account-status-banner--${user.status}`}>
             <ShieldCheck size={17} />
-            <span><strong>{user.status === 'pending' ? 'Account review in progress.' : `Account ${user.status}.`}</strong> {user.reviewNote || (user.status === 'pending' ? 'You can browse while an administrator reviews your request.' : 'Contact an administrator for more information.')}</span>
+            <span><strong>{user.status === 'pending' ? 'Account review in progress.' : `Account ${user.status}.`}</strong> {user.reviewNote || (user.status === 'pending' ? `You can browse while an administrator reviews your request${user.emailVerified ? '.' : ' and you verify your email.'}` : 'Contact an administrator for more information.')}</span>
           </div>
         )}
+        {user && user.status === 'approved' && !user.emailVerified && <div className="account-status-banner account-status-banner--pending"><MailWarning size={17} /><span><strong>Email verification required.</strong> Personal and publishing features unlock after you verify {user.email}.</span></div>}
         <main className="content"><Outlet /></main>
       </div>
 

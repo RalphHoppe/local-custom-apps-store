@@ -1,5 +1,5 @@
 import { ChevronDown, Search, SlidersHorizontal, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AppCard } from '../components/AppCard'
 import { AppCardSkeleton, EmptyState, ErrorState } from '../components/StoreStates'
 import { useStore } from '../store/StoreContext'
@@ -15,11 +15,17 @@ const filters: Array<{ label: string; value: 'All' | Platform }> = [
 ]
 
 export function AppsPage() {
-  const { apps, loading, error, reload } = useStore()
+  const { apps, loading, error, reload, trackEvent } = useStore()
   const [platform, setPlatform] = useState<'All' | Platform>('All')
   const [category, setCategory] = useState('All')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState('newest')
+
+  useEffect(() => {
+    if (query.trim().length < 2) return
+    const timeout = window.setTimeout(() => { void trackEvent('search', undefined, { queryLength: query.trim().length, platform, category }) }, 700)
+    return () => window.clearTimeout(timeout)
+  }, [category, platform, query, trackEvent])
 
   const categories = useMemo(() => ['All', ...Array.from(new Set(apps.map((app) => app.category))).sort()], [apps])
   const filtered = useMemo(() => {

@@ -1,10 +1,11 @@
-import { ArrowLeft, CalendarDays, CheckCircle2, Download, FileArchive, History, Info, Link2, LoaderCircle, Rocket, Trash2, UploadCloud } from 'lucide-react'
+import { ArrowLeft, CalendarDays, CheckCircle2, Download, FileArchive, History, Info, Link2, LoaderCircle, Rocket, RotateCcw, Trash2, UploadCloud } from 'lucide-react'
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AppIcon } from '../components/AppIcon'
+import { TrustMetadataFields } from '../components/TrustMetadataFields'
 import { AppCardSkeleton, EmptyState } from '../components/StoreStates'
 import { useStore } from '../store/StoreContext'
-import type { StoreApp } from '../types'
+import type { AppPermissionId, ReleaseChannel, SignatureType, StoreApp } from '../types'
 import { formatDate } from '../utils'
 
 function suggestVersion(version: string) {
@@ -20,17 +21,25 @@ function formatBytes(bytes: number) {
 
 export function UpdateManagementPage() {
   const { appId } = useParams()
-  const { user, getManagedApp, publishUpdate, deleteRelease } = useStore()
+  const { user, getManagedApp, publishUpdate, deleteRelease, rollbackRelease } = useStore()
   const [app, setApp] = useState<StoreApp | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [version, setVersion] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
+  const [channel, setChannel] = useState<ReleaseChannel>('stable')
+  const [rolloutPercentage, setRolloutPercentage] = useState(100)
+  const [scheduledAt, setScheduledAt] = useState('')
   const [notes, setNotes] = useState('')
   const [size, setSize] = useState('')
   const [source, setSource] = useState<'upload' | 'url'>('upload')
   const [downloadUrl, setDownloadUrl] = useState('')
   const [releaseFile, setReleaseFile] = useState<File | null>(null)
+  const [permissions, setPermissions] = useState<AppPermissionId[]>([])
+  const [signatureType, setSignatureType] = useState<SignatureType | 'none'>('none')
+  const [signatureSigner, setSignatureSigner] = useState('')
+  const [signatureFingerprint, setSignatureFingerprint] = useState('')
+  const [providedChecksum, setProvidedChecksum] = useState('')
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState('')
   const [error, setError] = useState('')
@@ -52,10 +61,18 @@ export function UpdateManagementPage() {
     const pending = app.pendingRelease
     setVersion(pending?.version ?? suggestVersion(app.version))
     setDate(pending?.date ?? new Date().toISOString().slice(0, 10))
+    setChannel(pending?.channel ?? 'stable')
+    setRolloutPercentage(pending?.rolloutPercentage ?? 100)
+    setScheduledAt(pending?.scheduledAt ? pending.scheduledAt.slice(0, 16) : '')
     setNotes(pending?.notes.join('\n') ?? '')
     setDownloadUrl(pending?.downloadUrl && /^https?:\/\//.test(pending.downloadUrl) ? pending.downloadUrl : '')
     setSource(pending?.downloadUrl && /^https?:\/\//.test(pending.downloadUrl) ? 'url' : 'upload')
     setSize((pending?.size ?? app.size) === 'Web app' ? '' : pending?.size ?? app.size)
+    setPermissions(pending?.permissions ?? app.permissions ?? [])
+    setSignatureType(pending?.signature?.type ?? app.signature?.type ?? 'none')
+    setSignatureSigner(pending?.signature?.signer ?? app.signature?.signer ?? '')
+    setSignatureFingerprint(pending?.signature?.fingerprint ?? app.signature?.fingerprint ?? '')
+    setProvidedChecksum(pending?.providedChecksum ?? '')
   }, [app])
 
   if (loading) return <div className="page"><AppCardSkeleton count={4} /></div>
@@ -77,12 +94,17 @@ export function UpdateManagementPage() {
     if (!releaseNotes.length) { setError('Add at least one release note.'); return }
     if (app.delivery === 'download' && source === 'upload' && !releaseFile) { setError('Choose the new app file.'); return }
     if (app.delivery === 'download' && source === 'url' && !downloadUrl.trim()) { setError('Add the new download URL.'); return }
+    if (app.delivery === 'download' && source === 'url' && !/^[a-fA-F0-9]{64}$/.test(providedChecksum.replace(/\s/g, ''))) { setError('Add the 64-character SHA-256 checksum for this external build.'); return }
+    if (signatureType !== 'none' && !signatureSigner.trim()) { setError('Add the signer name or choose no signature.'); return }
 
     setSaving(true)
     setError('')
     try {
       const saved = await publishUpdate(app.id, {
-        version: version.trim(), date, notes: releaseNotes, size: size.trim(),
+        version: version.trim(), date, notes: releaseNotes, size: size.trim(), channel, rolloutPercentage,
+        scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+        permissions, signature: signatureType === 'none' ? undefined : { type: signatureType, signer: signatureSigner, fingerprint: signatureFingerprint || undefined },
+        providedChecksum: providedChecksum || undefined,
         downloadUrl: source === 'url' ? downloadUrl.trim() : undefined,
         releaseFile: source === 'upload' ? releaseFile ?? undefined : undefined,
       })
@@ -113,6 +135,15 @@ export function UpdateManagementPage() {
     }
   }
 
+  const rollback = async (releaseId: string) => {
+    const reason = window.prompt('Why is this release being rolled back?')?.trim()
+    if (!reason) return
+    setDeletingId(releaseId); setError('')
+    try { setApp(await rollbackRelease(app.id, releaseId, reason)) }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'The release could not be rolled back.') }
+    finally { setDeletingId('') }
+  }
+
   const awaitingReview = user?.role !== 'admin' && app.releaseSubmissionStatus === 'pending'
   const needsChanges = user?.role !== 'admin' && ['changes_requested', 'declined'].includes(app.releaseSubmissionStatus ?? '')
 
@@ -134,6 +165,11 @@ export function UpdateManagementPage() {
             <label className="field"><span className="field__label">Version <small>Required</small></span><input value={version} onChange={(event) => setVersion(event.target.value)} placeholder="2.4.2" /></label>
             <label className="field"><span className="field__label">Release date</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
           </div>
+          <div className="field-row field-row--two">
+            <label className="field"><span className="field__label">Release channel</span><select value={channel} onChange={(event) => setChannel(event.target.value as ReleaseChannel)}><option value="stable">Stable</option><option value="beta">Beta</option><option value="preview">Preview</option></select></label>
+            <label className="field"><span className="field__label">Schedule <small>Optional</small></span><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /></label>
+          </div>
+          <label className="field"><span className="field__label">Staged rollout <small>{rolloutPercentage}% of eligible subscribers</small></span><input type="range" min="5" max="100" step="5" value={rolloutPercentage} onChange={(event) => setRolloutPercentage(Number(event.target.value))} /></label>
 
           {app.delivery === 'download' && (
             <>
@@ -155,6 +191,7 @@ export function UpdateManagementPage() {
                 <label className="field"><span className="field__label">Download URL <small>Required</small></span><input value={downloadUrl} onChange={(event) => setDownloadUrl(event.target.value)} placeholder="https://downloads.example/app-v2.zip" /></label>
               )}
               <label className="field"><span className="field__label">Download size</span><input value={size} onChange={(event) => setSize(event.target.value)} placeholder="52 MB" /></label>
+              <TrustMetadataFields delivery={app.delivery} permissions={permissions} onPermissionsChange={setPermissions} signature={signatureType === 'none' ? undefined : { type: signatureType, signer: signatureSigner, fingerprint: signatureFingerprint || undefined }} onSignatureChange={(signature) => { setSignatureType(signature?.type ?? 'none'); setSignatureSigner(signature?.signer ?? ''); setSignatureFingerprint(signature?.fingerprint ?? '') }} checksum={providedChecksum} onChecksumChange={setProvidedChecksum} externalArtifact={source === 'url'} compact />
             </>
           )}
 
@@ -170,9 +207,9 @@ export function UpdateManagementPage() {
                 <article className="release-item" key={release.id}>
                   <div className="release-item__rail"><i /><span /></div>
                   <div className="release-item__body">
-                    <div className="release-item__top"><div><strong>Version {release.version}</strong>{index === 0 && <span className="live-badge">Live</span>}</div><time><CalendarDays size={13} /> {formatDate(release.date)}</time></div>
+                    <div className="release-item__top"><div><strong>Version {release.version}</strong>{index === 0 && release.channel === 'stable' && <span className="live-badge">Live</span>}<span className={`release-channel-badge release-channel-badge--${release.channel}`}>{release.channel}</span></div><time><CalendarDays size={13} /> {formatDate(release.date)}</time></div>
                     <ul>{release.notes.map((note) => <li key={note}>{note}</li>)}</ul>
-                    <div className="release-item__footer"><span>{release.size || app.size}</span>{release.downloadUrl && <a href={release.downloadUrl} download={release.uploadedFileName ?? ''}><Download size={14} /> Download build</a>}{index > 0 && <button type="button" onClick={() => removeRelease(release.id)} disabled={deletingId === release.id}>{deletingId === release.id ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />} Remove</button>}</div>
+                    <div className="release-item__footer"><span>{release.size || app.size}</span>{release.downloadUrl && <a href={release.downloadUrl} download={release.uploadedFileName ?? ''}><Download size={14} /> Download build</a>}{user?.role === 'admin' && index === 0 && (release.channel ?? 'stable') === 'stable' && release.previousVersion && release.status !== 'rolled_back' && <button type="button" onClick={() => void rollback(release.id)} disabled={deletingId === release.id}>{deletingId === release.id ? <LoaderCircle className="spin" size={14} /> : <RotateCcw size={14} />} Roll back</button>}{index > 0 && <button type="button" onClick={() => removeRelease(release.id)} disabled={deletingId === release.id}>{deletingId === release.id ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />} Remove</button>}</div>
                   </div>
                 </article>
               ))}
