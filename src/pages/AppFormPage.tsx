@@ -2,6 +2,7 @@ import { ArrowLeft, Check, Download, FileArchive, Globe2, ImagePlus, Info, Link2
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { AppIcon } from '../components/AppIcon'
+import { TrustMetadataFields } from '../components/TrustMetadataFields'
 import { AppCardSkeleton, EmptyState } from '../components/StoreStates'
 import { useStore } from '../store/StoreContext'
 import type { Accent, Delivery, Platform, StoreApp } from '../types'
@@ -20,7 +21,7 @@ const blankApp: StoreApp = {
   id: '', name: '', tagline: '', description: '', category: 'Productivity', delivery: 'download',
   platforms: ['Windows'], version: '1.0.0', size: '', updated: new Date().toISOString().slice(0, 10),
   accent: 'violet', icon: 'panels', featured: false, isNew: true, downloadUrl: '', screenshots: [],
-  features: [], whatsNew: [], developer: 'Local Studio', isCustom: true,
+  features: [], whatsNew: [], permissions: [], developer: 'Local Studio', isCustom: true,
 }
 
 function formatBytes(bytes: number) {
@@ -211,6 +212,8 @@ export function AppFormPage() {
     if (!form.platforms.length) nextErrors.platforms = 'Choose at least one platform.'
     if (form.delivery === 'web' && !form.webUrl?.trim()) nextErrors.webUrl = 'Add the web app address.'
     if (form.delivery === 'download' && downloadSource === 'url' && !form.downloadUrl?.trim()) nextErrors.downloadUrl = 'Add the installer URL.'
+    if (form.delivery === 'download' && downloadSource === 'url' && !/^[a-fA-F0-9]{64}$/.test((form.providedChecksum ?? '').replace(/\s/g, ''))) nextErrors.providedChecksum = 'Add the 64-character SHA-256 checksum for this external build.'
+    if (form.signature && !form.signature.signer.trim()) nextErrors.signature = 'Add the signer name or choose no signature.'
     if (form.delivery === 'download' && downloadSource === 'upload' && !appFile && !form.downloadUrl?.startsWith('/')) nextErrors.appFile = 'Choose the app file to upload.'
     if (screenshotCount < 3 || screenshotCount > 10) nextErrors.screenshots = 'Add between 3 and 10 screenshots.'
     setErrors(nextErrors)
@@ -324,6 +327,7 @@ export function AppFormPage() {
               ) : (
                 <Field label="Web app URL" hint="Required" error={errors.webUrl}><input value={form.webUrl ?? ''} onChange={(event) => setField('webUrl', event.target.value)} placeholder="https://your-app.example" inputMode="url" /></Field>
               )}
+              <TrustMetadataFields delivery={form.delivery} permissions={form.permissions ?? []} onPermissionsChange={(permissions) => setField('permissions', permissions)} signature={form.signature} onSignatureChange={(signature) => setField('signature', signature)} checksum={form.providedChecksum ?? ''} onChecksumChange={(providedChecksum) => setField('providedChecksum', providedChecksum)} externalArtifact={form.delivery === 'download' && downloadSource === 'url'} errors={errors} />
             </FormSection>
 
             <FormSection number="03" title="Screenshot gallery" description="Add 3 to 10 images by uploading them or pasting image URLs.">
@@ -382,7 +386,7 @@ export function AppFormPage() {
               </Field>
             </FormSection>
 
-            <FormSection number="05" title="Useful details" description="One item per line. Keep them short and honest.">
+            <FormSection number="06" title="Useful details" description="One item per line. Keep them short and honest.">
               <div className="field-row field-row--two">
                 <Field label="Key features"><textarea rows={5} value={featuresText} onChange={(event) => setFeaturesText(event.target.value)} placeholder={'Works offline\nInstant search\nSimple export'} /></Field>
                 <Field label="What’s new"><textarea rows={5} value={newsText} onChange={(event) => setNewsText(event.target.value)} placeholder={'A faster launch\nImproved export\nSmall fixes'} /></Field>

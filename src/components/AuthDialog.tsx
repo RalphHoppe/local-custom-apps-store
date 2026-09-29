@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Eye, EyeOff, LoaderCircle, LockKeyhole, ShieldCheck, Store, UserRound, X } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Eye, EyeOff, KeyRound, LoaderCircle, LockKeyhole, MailCheck, ShieldCheck, Store, UserRound, X } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { useStore } from '../store/StoreContext'
 import type { UserRole } from '../types'
@@ -15,11 +15,19 @@ export function AuthDialog() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [registered, setRegistered] = useState(false)
+  const [verificationUrl, setVerificationUrl] = useState('')
+  const [forgotOpen, setForgotOpen] = useState(false)
+  const [forgotSent, setForgotSent] = useState(false)
+  const [resetPreviewUrl, setResetPreviewUrl] = useState('')
 
   useEffect(() => {
     if (!authOpen) return
     setError('')
     setRegistered(false)
+    setVerificationUrl('')
+    setForgotOpen(false)
+    setForgotSent(false)
+    setResetPreviewUrl('')
     document.body.classList.add('no-scroll')
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') closeAuth() }
     document.addEventListener('keydown', closeOnEscape)
@@ -35,7 +43,8 @@ export function AuthDialog() {
     try {
       if (authMode === 'signin') await login(identifier, password)
       else {
-        await signup({ username, email, displayName, password, requestedRole: role })
+        const result = await signup({ username, email, displayName, password, requestedRole: role })
+        setVerificationUrl(result.previewUrl ?? '')
         setRegistered(true)
       }
     } catch (cause) {
@@ -43,6 +52,18 @@ export function AuthDialog() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const requestReset = async (event: FormEvent) => {
+    event.preventDefault(); setBusy(true); setError('')
+    try {
+      const response = await fetch('/api/auth/forgot-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ identifier }) })
+      const body = await response.json() as { error?: string; previewUrl?: string }
+      if (!response.ok) throw new Error(body.error || 'The reset request could not be started.')
+      setResetPreviewUrl(body.previewUrl ?? '')
+      setForgotSent(true)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'The reset request could not be started.') }
+    finally { setBusy(false) }
   }
 
   return (
@@ -64,12 +85,20 @@ export function AuthDialog() {
             <div className="auth-success">
               <div className="auth-success__icon"><Check /></div>
               <p className="eyebrow">Registration received</p>
-              <h2 id="auth-title">Your account is waiting for review.</h2>
-              <p>An administrator will approve or decline your request. You can sign in now to see its current status and continue browsing.</p>
-              <button type="button" className="button button--primary button--large button--full" onClick={() => { setIdentifier(username); setPassword(''); openAuth('signin') }}>Continue to sign in <ArrowRight size={17} /></button>
+              <h2 id="auth-title">Two checks, then you’re in.</h2>
+              <p>Verify your email and wait for administrator approval. You can sign in now to follow both statuses while continuing to browse.</p>
+              {verificationUrl && <a className="button button--primary button--large button--full" href={verificationUrl}><MailCheck size={17} /> Open local verification message</a>}
+              <button type="button" className={`button ${verificationUrl ? 'button--secondary' : 'button--primary'} button--large button--full`} onClick={() => { setIdentifier(username); setPassword(''); openAuth('signin') }}>Continue to sign in <ArrowRight size={17} /></button>
             </div>
           ) : (
             <>
+              {forgotOpen ? (
+                <div className="auth-forgot">
+                  <button type="button" className="auth-forgot__back" onClick={() => { setForgotOpen(false); setForgotSent(false); setError('') }}><ArrowLeft size={15} /> Back to sign in</button>
+                  <div className="auth-heading"><p className="eyebrow">Account recovery</p><h2 id="auth-title">{forgotSent ? 'Check the reset message.' : 'Reset your password.'}</h2><p>{forgotSent ? 'If the account exists, a secure one-hour reset link is ready.' : 'Enter your username or email. We never reveal whether an account exists.'}</p></div>
+                  {forgotSent ? <div className="auth-recovery-result"><div className="auth-success__icon"><MailCheck /></div>{resetPreviewUrl && <a className="button button--primary button--large button--full" href={resetPreviewUrl}><KeyRound size={17} /> Open local reset message</a>}<button type="button" className="button button--secondary button--large button--full" onClick={() => { setForgotOpen(false); setForgotSent(false) }}>Return to sign in</button></div> : <form className="auth-form" onSubmit={requestReset}>{error && <div className="auth-error">{error}</div>}<label><span>Username or email</span><input value={identifier} onChange={(event) => setIdentifier(event.target.value)} placeholder="Username or email" autoComplete="username" required autoFocus /></label><button type="submit" className="button button--primary button--large button--full" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : <KeyRound size={18} />} {busy ? 'Please wait…' : 'Create reset link'}</button></form>}
+                </div>
+              ) : <>
               <div className="auth-tabs" role="tablist">
                 <button type="button" className={authMode === 'signin' ? 'is-active' : ''} onClick={() => openAuth('signin')}>Sign in</button>
                 <button type="button" className={authMode === 'signup' ? 'is-active' : ''} onClick={() => openAuth('signup')}>Create account</button>
@@ -100,7 +129,8 @@ export function AuthDialog() {
                 <label><span>Password</span><div className="password-field"><LockKeyhole size={17} /><input type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => setPassword(event.target.value)} placeholder={authMode === 'signup' ? 'At least 8 characters' : 'Your password'} autoComplete={authMode === 'signup' ? 'new-password' : 'current-password'} minLength={8} required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <EyeOff size={17} /> : <Eye size={17} />}</button></div></label>
                 <button type="submit" className="button button--primary button--large button--full" disabled={busy}>{busy ? <LoaderCircle className="spin" size={18} /> : authMode === 'signin' ? <ArrowRight size={18} /> : <UserRound size={18} />} {busy ? 'Please wait…' : authMode === 'signin' ? 'Sign in' : 'Send for review'}</button>
               </form>
-              {authMode === 'signin' && <div className="admin-hint"><ShieldCheck size={15} /><span>Temporary administrator: <code>admin</code> / <code>admin123</code></span></div>}
+              {authMode === 'signin' && <><button type="button" className="forgot-password-link" onClick={() => { setForgotOpen(true); setError('') }}>Forgot password?</button><div className="admin-hint"><ShieldCheck size={15} /><span>Temporary administrator: <code>admin</code> / <code>admin123</code></span></div></>}
+            </>}
             </>
           )}
         </div>

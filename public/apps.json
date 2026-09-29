@@ -18,7 +18,8 @@
     "screenshots": ["/art/pulseboard-preview.jpg"],
     "features": ["Flexible project boards", "Live progress views", "Private by default"],
     "whatsNew": ["A faster command menu", "New weekly review layout", "Smoother board transitions"],
-    "developer": "Local Studio"
+    "developer": "Local Studio",
+    "permissions": ["network", "notifications"]
   },
   {
     "id": "focus-flow",
@@ -39,7 +40,8 @@
     "screenshots": ["/art/focus-flow-preview.jpg"],
     "features": ["Flexible focus sessions", "Quiet break reminders", "Local session history"],
     "whatsNew": ["Custom session sounds", "Compact mini timer", "Reduced memory use"],
-    "developer": "Local Studio"
+    "developer": "Local Studio",
+    "permissions": ["notifications", "background"]
   },
   {
     "id": "quiet-notes",
@@ -60,7 +62,8 @@
     "screenshots": ["/art/quiet-notes-preview.jpg"],
     "features": ["Works completely offline", "Instant full-text search", "Markdown shortcuts"],
     "whatsNew": ["Pinned note groups", "Better PDF export", "15 smaller fixes"],
-    "developer": "Northline"
+    "developer": "Northline",
+    "permissions": ["files", "clipboard"]
   },
   {
     "id": "pocket-scan",
@@ -81,7 +84,8 @@
     "screenshots": ["/art/pocket-scan-preview.jpg"],
     "features": ["Automatic edge detection", "Local text recognition", "One-tap PDF export"],
     "whatsNew": ["Batch scanning", "Custom file names", "Improved low-light capture"],
-    "developer": "Local Studio"
+    "developer": "Local Studio",
+    "permissions": ["camera", "files"]
   },
   {
     "id": "tiny-weather",
@@ -102,7 +106,8 @@
     "screenshots": [],
     "features": ["Seven-day forecast", "Saved places", "Simple rain alerts"],
     "whatsNew": ["Faster location search", "Improved wind details"],
-    "developer": "Northline"
+    "developer": "Northline",
+    "permissions": ["network", "location"]
   },
   {
     "id": "color-drop",
@@ -123,7 +128,8 @@
     "screenshots": [],
     "features": ["Screen color picker", "Palette collections", "CSS and design exports"],
     "whatsNew": ["OKLCH support", "New palette suggestions", "Figma-friendly export"],
-    "developer": "Local Studio"
+    "developer": "Local Studio",
+    "permissions": ["clipboard", "screen_capture"]
   },
   {
     "id": "clip-keep",
@@ -144,7 +150,8 @@
     "screenshots": [],
     "features": ["Fast global shortcut", "Private local storage", "Pinned collections"],
     "whatsNew": ["First public preview", "Import from plain text"],
-    "developer": "Local Studio"
+    "developer": "Local Studio",
+    "permissions": ["clipboard", "background"]
   },
   {
     "id": "soundhaven",
@@ -165,6 +172,7 @@
     "screenshots": [],
     "features": ["Layered soundscapes", "Focus timer", "Shareable mixes"],
     "whatsNew": ["Three new rain sounds", "Remember volume per sound"],
-    "developer": "Northline"
+    "developer": "Northline",
+    "permissions": ["network", "background"]
   }
 ]

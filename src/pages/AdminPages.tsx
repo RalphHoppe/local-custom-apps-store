@@ -2,11 +2,14 @@ import {
   AlertTriangle,
   AppWindow,
   ArrowRight,
+  BookOpen,
   Check,
   CheckCircle2,
   Clock3,
+  Database,
   ExternalLink,
   FileCheck2,
+  Fingerprint,
   LayoutDashboard,
   LoaderCircle,
   MessageSquareText,
@@ -27,9 +30,10 @@ import {
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { AppIcon } from '../components/AppIcon'
+import { ReviewModerationPanel } from '../components/ReviewModerationPanel'
 import { AppCardSkeleton, EmptyState } from '../components/StoreStates'
 import { getResponseError, useStore } from '../store/StoreContext'
-import type { StoreApp, UserAccount, UserRole } from '../types'
+import type { EditorialCollection, StoreApp, UserAccount, UserRole } from '../types'
 import { formatDate } from '../utils'
 
 const adminNav = [
@@ -37,6 +41,9 @@ const adminNav = [
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/reviews', label: 'Review queue', icon: FileCheck2 },
   { to: '/admin/apps', label: 'All listings', icon: AppWindow },
+  { to: '/admin/editorial', label: 'Editorial', icon: BookOpen },
+  { to: '/admin/security', label: 'Trust', icon: Fingerprint },
+  { to: '/admin/system', label: 'System', icon: Database },
 ]
 
 export function AdminShell() {
@@ -130,7 +137,8 @@ export function AdminUsersPage() {
     if (!decision) return
     setBusy(true); setActionError('')
     try {
-      const response = await fetch(`/api/admin/users/${decision.user.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: decision.action, note, role }) })
+      const publisherVerification = ['verify_publisher', 'unverify_publisher'].includes(decision.action)
+      const response = await fetch(`/api/admin/users/${decision.user.id}${publisherVerification ? '/publisher-verification' : ''}`, { method: publisherVerification ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(publisherVerification ? { verified: decision.action === 'verify_publisher', note } : { action: decision.action, note, role }) })
       if (!response.ok) throw new Error(await getResponseError(response))
       if (response.status === 204) setUsers((current) => current.filter((user) => user.id !== decision.user.id))
       else {
@@ -152,11 +160,11 @@ export function AdminUsersPage() {
         <div className="user-table user-table--head"><span>User</span><span>Requested</span><span>Current role</span><span>Status</span><span>Joined</span><span>Actions</span></div>
         {filtered.map((account) => (
           <div className="user-table" key={account.id}>
-            <div className="user-cell"><div className="user-avatar">{account.displayName.slice(0, 2).toUpperCase()}</div><span><strong>{account.displayName}</strong><small>@{account.username} · {account.email}</small></span></div>
+            <div className="user-cell"><div className="user-avatar">{account.displayName.slice(0, 2).toUpperCase()}</div><span><strong>{account.displayName}</strong><small>@{account.username} · {account.email} · {account.emailVerified ? 'email verified' : 'email unverified'}</small></span></div>
             <span className="table-secondary">{account.requestedRole}</span><span className="role-badge">{account.role}</span><StatusBadge status={account.status} /><span className="table-secondary">{formatDate(account.createdAt.slice(0, 10))}</span>
             <div className="row-actions">
               {account.status === 'pending' && <><button type="button" className="mini-action mini-action--approve" onClick={() => openDecision(account, 'approve')}><Check size={14} /> Approve</button><button type="button" className="mini-action" onClick={() => openDecision(account, 'decline')}><X size={14} /></button></>}
-              {account.status === 'approved' && !account.isBootstrapAdmin && <><button type="button" className="mini-action" onClick={() => openDecision(account, 'change_role')}><UserCog size={14} /> Role</button><button type="button" className="mini-action" onClick={() => openDecision(account, 'suspend')}><ShieldOff size={14} /></button></>}
+              {account.status === 'approved' && !account.isBootstrapAdmin && <><button type="button" className="mini-action" onClick={() => openDecision(account, 'change_role')}><UserCog size={14} /> Role</button>{account.role === 'publisher' && <button type="button" className={`mini-action ${account.publisherVerified ? '' : 'mini-action--approve'}`} onClick={() => openDecision(account, account.publisherVerified ? 'unverify_publisher' : 'verify_publisher')}><ShieldCheck size={14} /> {account.publisherVerified ? 'Unverify' : 'Verify'}</button>}<button type="button" className="mini-action" onClick={() => openDecision(account, 'suspend')}><ShieldOff size={14} /></button></>}
               {['declined', 'suspended'].includes(account.status) && <button type="button" className="mini-action mini-action--approve" onClick={() => openDecision(account, 'reactivate')}><RefreshCw size={14} /> Reactivate</button>}
               {!account.isBootstrapAdmin && <button type="button" className="mini-action mini-action--danger" onClick={() => openDecision(account, 'delete')}><Trash2 size={14} /></button>}
             </div>
@@ -170,7 +178,7 @@ export function AdminUsersPage() {
 }
 
 function decisionTitle(action: string, name: string) {
-  return ({ approve: `Approve ${name}`, decline: `Decline ${name}`, suspend: `Suspend ${name}`, reactivate: `Reactivate ${name}`, change_role: `Change ${name}’s role`, delete: `Delete ${name}` } as Record<string, string>)[action]
+  return ({ approve: `Approve ${name}`, decline: `Decline ${name}`, suspend: `Suspend ${name}`, reactivate: `Reactivate ${name}`, change_role: `Change ${name}’s role`, verify_publisher: `Verify ${name}`, unverify_publisher: `Remove ${name}’s verification`, delete: `Delete ${name}` } as Record<string, string>)[action]
 }
 
 function DecisionDialog({ title, action, note, setNote, role, setRole, error, busy, close, confirm }: { title: string; action: string; note: string; setNote: (value: string) => void; role: UserRole; setRole: (value: UserRole) => void; error: string; busy: boolean; close: () => void; confirm: () => void }) {
@@ -209,6 +217,7 @@ export function AdminReviewsPage() {
         {queue.map((item) => <button type="button" className="review-row" key={`${item.type}-${item.app.id}`} onClick={() => { setSelected(item); setNote(''); setActionError('') }}><AppIcon app={item.app} size="medium" /><span className="review-type">{item.type === 'listing' ? <FileCheck2 size={14} /> : <Rocket size={14} />}{item.type === 'listing' ? 'App listing' : 'Version update'}</span><span className="review-main"><strong>{item.app.name}</strong><small>{item.type === 'release' ? `Version ${item.app.pendingRelease?.version}` : item.app.tagline}</small></span><span className="review-owner"><small>Submitted by</small><strong>{item.app.ownerName || 'Unknown publisher'}</strong></span><span className="review-date">{formatDate((item.type === 'release' ? item.app.releaseSubmittedAt : item.app.submittedAt)?.slice(0, 10) || item.app.updated)}</span><ArrowRight size={17} /></button>)}
         {!queue.length && <div className="queue-clear"><div><CheckCircle2 /></div><h3>Everything is reviewed.</h3><p>New app and update submissions will appear here.</p></div>}
       </div>
+      <ReviewModerationPanel />
       {selected && <ReviewDrawer item={selected} note={note} setNote={setNote} busy={busy} error={actionError} close={() => setSelected(null)} decide={decide} />}
     </div>
   )
@@ -253,3 +262,97 @@ export function AdminAppsPage() {
 function PlusIcon() { return <Store size={16} /> }
 function StatusBadge({ status }: { status: string }) { return <span className={`status-badge status-badge--${status}`}>{status.replace('_', ' ')}</span> }
 function AdminError({ message, retry }: { message: string; retry: () => void }) { return <div className="admin-error"><AlertTriangle size={18} /><span>{message}</span><button type="button" onClick={retry}><RefreshCw size={15} /> Retry</button></div> }
+
+export function AdminEditorialPage() {
+  const { apps, loading: appsLoading } = useStore()
+  const [collections, setCollections] = useState<EditorialCollection[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState('')
+  const [draft, setDraft] = useState<EditorialCollection | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const response = await fetch('/api/admin/editorial/collections')
+      if (!response.ok) throw new Error(await getResponseError(response))
+      setCollections(await response.json() as EditorialCollection[])
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Editorial collections could not be loaded.') }
+    finally { setLoading(false) }
+  }, [])
+  useEffect(() => { void load() }, [load])
+
+  const save = async () => {
+    if (!draft) return
+    setBusy(draft.id || 'new'); setError('')
+    try {
+      const response = await fetch(`/api/admin/editorial/collections${draft.id ? `/${encodeURIComponent(draft.id)}` : ''}`, { method: draft.id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(draft) })
+      if (!response.ok) throw new Error(await getResponseError(response))
+      const saved = await response.json() as EditorialCollection
+      setCollections((current) => [...current.filter((item) => item.id !== saved.id), saved].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)))
+      setDraft(null)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'The collection could not be saved.') }
+    finally { setBusy('') }
+  }
+
+  const remove = async (collection: EditorialCollection) => {
+    if (!window.confirm(`Delete “${collection.title}”?`)) return
+    setBusy(collection.id)
+    try {
+      const response = await fetch(`/api/admin/editorial/collections/${encodeURIComponent(collection.id)}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error(await getResponseError(response))
+      setCollections((current) => current.filter((item) => item.id !== collection.id))
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'The collection could not be deleted.') }
+    finally { setBusy('') }
+  }
+
+  if (loading || appsLoading) return <div className="admin-content"><AppCardSkeleton count={4} /></div>
+  return <div className="admin-content editorial-admin"><section className="admin-section-title"><div><p className="eyebrow">Curated discovery</p><h2>Editorial collections</h2><p>Build deliberate public shelves without creating behavioral profiles.</p></div><button type="button" className="button button--primary" onClick={() => setDraft({ id: '', title: '', description: '', accent: 'violet', published: false, appIds: [], createdAt: '', updatedAt: '' })}><BookOpen size={16} /> New collection</button></section>{error && <AdminError message={error} retry={load} />}<section className="editorial-admin-grid">{collections.map((collection) => <article className={`editorial-admin-card accent-${collection.accent}`} key={collection.id}><header><span>{collection.published ? 'Published' : 'Draft'}</span><strong>{collection.title}</strong><p>{collection.description}</p></header><div className="editorial-admin-card__apps">{collection.appIds.map((id) => apps.find((app) => app.id === id)).filter(Boolean).slice(0, 5).map((app) => app && <AppIcon app={app} size="small" key={app.id} />)}<small>{collection.appIds.length} apps</small></div><footer><button type="button" onClick={() => setDraft(collection)}><Pencil size={15} /> Edit</button><button type="button" className="is-danger" onClick={() => void remove(collection)} disabled={busy === collection.id}><Trash2 size={15} /> Delete</button></footer></article>)}</section>{!collections.length && <EmptyState title="No editorial collections" body="Create the first hand-picked shelf for Discover." />}{draft && <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setDraft(null)}><section className="editorial-dialog" role="dialog" aria-modal="true"><button type="button" className="auth-close" onClick={() => setDraft(null)}><X /></button><p className="eyebrow">Editorial desk</p><h2>{draft.id ? 'Edit collection' : 'New collection'}</h2><label className="admin-field"><span>Title</span><input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label><label className="admin-field"><span>Description</span><textarea rows={4} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label><label className="admin-field"><span>Accent</span><select value={draft.accent} onChange={(event) => setDraft({ ...draft, accent: event.target.value as EditorialCollection['accent'] })}>{['violet','plum','green','coral','blue','pink','amber','teal'].map((accent) => <option value={accent} key={accent}>{accent}</option>)}</select></label><fieldset className="editorial-app-picker"><legend>Included apps</legend>{apps.map((app) => <label key={app.id}><input type="checkbox" checked={draft.appIds.includes(app.id)} onChange={() => setDraft({ ...draft, appIds: draft.appIds.includes(app.id) ? draft.appIds.filter((id) => id !== app.id) : [...draft.appIds, app.id] })} /><AppIcon app={app} size="small" /><span>{app.name}</span></label>)}</fieldset><label className="editorial-publish-toggle"><input type="checkbox" checked={draft.published} onChange={(event) => setDraft({ ...draft, published: event.target.checked })} /> Publish on Discover</label><footer><button type="button" className="button button--secondary" onClick={() => setDraft(null)}>Cancel</button><button type="button" className="button button--primary" onClick={() => void save()} disabled={Boolean(busy) || !draft.title.trim()}>{busy && <LoaderCircle className="spin" />} Save collection</button></footer></section></div>}</div>
+}
+
+interface SystemStatus {
+  database: { path: string; sizeBytes: number; journalMode: string }
+  backups: Array<{ name: string; sizeBytes: number; createdAt: string }>
+  auditCount: number
+  analyticsDays: number
+  recentAudit: Array<{ actorName: string; action: string; targetType: string; targetId: string | null; summary: string; createdAt: string }>
+}
+
+export function AdminSystemPage() {
+  const [status, setStatus] = useState<SystemStatus | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState('')
+  const load = useCallback(async () => {
+    setLoading(true); setError('')
+    try {
+      const response = await fetch('/api/admin/system')
+      if (!response.ok) throw new Error(await getResponseError(response))
+      setStatus(await response.json() as SystemStatus)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'System status could not be loaded.') }
+    finally { setLoading(false) }
+  }, [])
+  useEffect(() => { void load() }, [load])
+  const backup = async () => {
+    setBusy('backup')
+    try { const response = await fetch('/api/admin/system/backups', { method: 'POST' }); if (!response.ok) throw new Error(await getResponseError(response)); await load() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'The backup could not be created.') }
+    finally { setBusy('') }
+  }
+  const restore = async (name: string) => {
+    if (!window.confirm(`Restore ${name}? Current data will be backed up first and all sessions will be revoked.`)) return
+    setBusy(name)
+    try { const response = await fetch(`/api/admin/system/backups/${encodeURIComponent(name)}/restore`, { method: 'POST' }); if (!response.ok) throw new Error(await getResponseError(response)); window.location.assign('/') }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'The backup could not be restored.'); setBusy('') }
+  }
+  if (loading) return <div className="admin-content"><AppCardSkeleton count={3} /></div>
+  return <div className="admin-content system-admin">
+    <section className="admin-section-title"><div><p className="eyebrow">Persistence & recovery</p><h2>System operations</h2><p>Inspect SQLite health, audit sensitive changes, and create or restore consistent local backups.</p></div><button type="button" className="button button--primary" onClick={() => void backup()} disabled={Boolean(busy)}>{busy === 'backup' ? <LoaderCircle className="spin" /> : <Database />} Create backup</button></section>
+    {error && <AdminError message={error} retry={load} />}
+    {status && <>
+      <section className="system-metrics"><article><Database /><span><strong>SQLite · {status.database.journalMode}</strong><small>{status.database.path} · {(status.database.sizeBytes / 1024 / 1024).toFixed(2)} MB</small></span></article><article><ShieldCheck /><span><strong>{status.auditCount} audit entries</strong><small>Security-sensitive operations are recorded.</small></span></article><article><Clock3 /><span><strong>{status.analyticsDays}-day retention</strong><small>Analytics expire automatically.</small></span></article></section>
+      <section className="admin-table-card backup-list"><header><div><p className="eyebrow">Recovery points</p><h3>Database backups</h3></div></header>{status.backups.map((item) => <div className="backup-row" key={item.name}><Database /><span><strong>{item.name}</strong><small>{new Date(item.createdAt).toLocaleString()} · {(item.sizeBytes / 1024 / 1024).toFixed(2)} MB</small></span><button type="button" className="mini-action" onClick={() => void restore(item.name)} disabled={Boolean(busy)}>{busy === item.name ? <LoaderCircle className="spin" /> : <RefreshCw />} Restore</button></div>)}{!status.backups.length && <EmptyState title="No backups yet" body="Create a recovery point before major changes." />}</section>
+      <section className="admin-table-card audit-list"><header><div><p className="eyebrow">Accountability</p><h3>Recent audit activity</h3></div><span>{status.auditCount} total</span></header>{status.recentAudit.map((entry, index) => <div className="audit-row" key={`${entry.createdAt}-${entry.action}-${index}`}><ShieldCheck /><span><strong>{entry.summary}</strong><small>{entry.actorName} · {entry.action} · {entry.targetType}{entry.targetId ? ` ${entry.targetId}` : ''}</small></span><time>{new Date(entry.createdAt).toLocaleString()}</time></div>)}{!status.recentAudit.length && <EmptyState title="No audit activity yet" body="Sensitive account, publication, trust, and recovery operations appear here." />}</section>
+    </>}
+  </div>
+}

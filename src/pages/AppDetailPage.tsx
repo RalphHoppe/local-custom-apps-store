@@ -22,6 +22,10 @@ import {
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { AppIcon } from '../components/AppIcon'
+import { AppTrustSection } from '../components/AppTrustSection'
+import { ReleaseChannelsSection } from '../components/ReleaseChannelsSection'
+import { ReviewsSection } from '../components/ReviewsSection'
+import { SimilarAppsSection } from '../components/SimilarAppsSection'
 import { AppCardSkeleton, EmptyState } from '../components/StoreStates'
 import { useStore } from '../store/StoreContext'
 import type { Platform, StoreApp } from '../types'
@@ -38,8 +42,10 @@ const platformIcons: Record<Platform, React.ReactNode> = {
 
 export function AppDetailPage() {
   const { appId } = useParams()
-  const { apps, loading, favorites, installed, user, toggleFavorite, performPrimaryAction, notify } = useStore()
+  const { apps, loading, favorites, installed, user, toggleFavorite, performPrimaryAction, notify, trackEvent, recordRecentView } = useStore()
   const app = apps.find((item) => item.id === appId)
+
+  useEffect(() => { if (app) { trackEvent('view', app.id, { surface: 'detail' }); recordRecentView(app) } }, [app?.id, recordRecentView, trackEvent])
 
   if (loading) return <div className="page"><AppCardSkeleton count={4} /></div>
   if (!app) return (
@@ -73,7 +79,7 @@ export function AppDetailPage() {
             <div className="detail-labels"><span>{app.category}</span>{app.isNew && <span className="new-badge">New</span>}</div>
             <h1>{app.name}</h1>
             <p>{app.tagline}</p>
-            <small>by {app.developer}</small>
+            {app.publisherUsername ? <Link className="publisher-inline-link" to={`/publisher/${app.publisherUsername}`}>by {app.developer}</Link> : <small>by {app.developer}</small>}
           </div>
           <div className="detail-hero__actions">
             <button type="button" className={`icon-button ${isFavorite ? 'is-active' : ''}`} onClick={() => toggleFavorite(app.id)} aria-label={isFavorite ? 'Remove from favorites' : 'Add to favorites'}>
@@ -96,6 +102,9 @@ export function AppDetailPage() {
       </section>
 
       {app.screenshots.length > 0 && <ScreenshotGallery app={app} />}
+
+      <AppTrustSection app={app} />
+      <ReleaseChannelsSection app={app} />
 
       <div className="detail-layout">
         <div className="detail-main">
@@ -132,6 +141,8 @@ export function AppDetailPage() {
           </div>
         </aside>
       </div>
+      <ReviewsSection app={app} />
+      <SimilarAppsSection app={app} />
     </div>
   )
 }

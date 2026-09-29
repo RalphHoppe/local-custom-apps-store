@@ -1,15 +1,23 @@
 import { ArrowRight, ArrowUpRight, Download, Globe2, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../store/StoreContext'
 import { AppCard } from '../components/AppCard'
 import { AppCardSkeleton, ErrorState } from '../components/StoreStates'
 import { AppIcon } from '../components/AppIcon'
+import type { DiscoveryData, EditorialCollection, StoreApp } from '../types'
 
 export function DiscoverPage() {
-  const { apps, loading, error, reload, performPrimaryAction } = useStore()
+  const { apps, loading, error, reload, performPrimaryAction, privateDiscovery } = useStore()
+  const [collections, setCollections] = useState<EditorialCollection[]>([])
+  const [trendingIds, setTrendingIds] = useState<string[]>([])
+  const [followedPublishers, setFollowedPublishers] = useState<string[]>([])
+  useEffect(() => { fetch('/api/discovery').then((response) => response.ok ? response.json() as Promise<DiscoveryData> : Promise.reject()).then((data) => { setCollections(data.collections); setTrendingIds(data.trending.map((item) => item.appId)); setFollowedPublishers(data.followedPublishers) }).catch(() => undefined) }, [])
   const featured = apps.find((app) => app.featured) ?? apps[0]
   const newest = apps.filter((app) => app.isNew)
   const essentials = apps.filter((app) => !app.featured).slice(0, 4)
+  const trending = trendingIds.map((id) => apps.find((app) => app.id === id)).filter(Boolean) as StoreApp[]
+  const followedApps = apps.filter((app) => app.publisherUsername && followedPublishers.includes(app.publisherUsername))
 
   if (error) return <div className="page page--centered"><ErrorState retry={reload} /></div>
 
@@ -67,6 +75,14 @@ export function DiscoverPage() {
             </div>
           </section>
 
+          {trending.length > 0 && <section className="section-block"><div className="section-heading"><div><span>Store-wide momentum</span><h2>Trending now</h2></div></div><div className="horizontal-list">{trending.slice(0, 5).map((app) => <AppCard key={app.id} app={app} layout="row" />)}</div></section>}
+
+          {followedApps.length > 0 && <section className="section-block"><div className="section-heading"><div><span>Publishers you follow</span><h2>From familiar makers</h2></div></div><div className="app-grid">{followedApps.slice(0, 4).map((app) => <AppCard key={app.id} app={app} />)}</div></section>}
+
+          {privateDiscovery.length > 0 && <section className="section-block"><div className="section-heading"><div><span>Private to this browser</span><h2>Inspired by your recent activity</h2></div><small className="privacy-note">Computed locally · not sent as a profile</small></div><div className="app-grid">{privateDiscovery.slice(0, 4).map((app) => <AppCard key={app.id} app={app} />)}</div></section>}
+
+          {collections.map((collection) => <EditorialShelf key={collection.id} collection={collection} apps={apps} />)}
+
           {newest.length > 0 && (
             <section className="section-block section-block--last">
               <div className="section-heading">
@@ -86,4 +102,10 @@ export function DiscoverPage() {
       </footer>
     </div>
   )
+}
+
+function EditorialShelf({ collection, apps }: { collection: EditorialCollection; apps: StoreApp[] }) {
+  const selected = collection.appIds.map((id) => apps.find((app) => app.id === id)).filter(Boolean) as StoreApp[]
+  if (!selected.length) return null
+  return <section className="section-block editorial-shelf"><div className="section-heading"><div><span>Local editorial</span><h2>{collection.title}</h2></div><Link to={`/collection/${collection.id}`}>Explore collection <ArrowRight size={16} /></Link></div><p className="editorial-shelf__description">{collection.description}</p><div className="app-grid">{selected.slice(0, 4).map((app) => <AppCard key={app.id} app={app} />)}</div></section>
 }
